@@ -144,6 +144,7 @@ button, input, select, textarea {
 .user-badge.technician .indicator { background-color: var(--primary); }
 .user-badge.supervisor .indicator { background-color: var(--warning); }
 .user-badge.manager .indicator { background-color: var(--success); }
+.user-badge.admin .indicator { background-color: #a855f7; }
 
 /* Buttons */
 .btn {

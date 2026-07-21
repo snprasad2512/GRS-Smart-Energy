@@ -1,5 +1,6 @@
 // GRS Smart Energy Monitoring System - Database Layer
-// Manages localStorage tables: Users, Locations, EnergyMeters, MeterReadings
+// Manages localStorage tables with Supabase Cloud Database Adapter
+import { supabaseApi, isSupabaseConfigured } from './supabase-client.js';
 
 const STORAGE_KEYS = {
     USERS: 'grs_users',
@@ -259,6 +260,11 @@ function initDatabase() {
 
 // Database helper functions
 const db = {
+    isCloudMode() {
+        return isSupabaseConfigured();
+    },
+    supabase: supabaseApi,
+
     // USERS Table
     getUsers() {
         return JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]');
@@ -296,7 +302,10 @@ const db = {
     getEnergyMeters() {
         return JSON.parse(localStorage.getItem(STORAGE_KEYS.METERS) || '[]');
     },
-    saveEnergyMeter(meter) {
+    async saveEnergyMeter(meter) {
+        if (this.isCloudMode()) {
+            return await this.supabase.saveEnergyMeter(meter);
+        }
         const meters = this.getEnergyMeters();
         const existingIndex = meters.findIndex(m => m.id === meter.id);
         if (existingIndex >= 0) {
@@ -308,7 +317,10 @@ const db = {
         localStorage.setItem(STORAGE_KEYS.METERS, JSON.stringify(meters));
         return meter;
     },
-    deleteEnergyMeter(id) {
+    async deleteEnergyMeter(id) {
+        if (this.isCloudMode()) {
+            return await this.supabase.deleteEnergyMeter(id);
+        }
         let meters = this.getEnergyMeters();
         meters = meters.filter(m => m.id !== id);
         localStorage.setItem(STORAGE_KEYS.METERS, JSON.stringify(meters));
@@ -332,14 +344,20 @@ const db = {
     getMeterReadings() {
         return JSON.parse(localStorage.getItem(STORAGE_KEYS.READINGS) || '[]');
     },
-    saveMeterReading(reading) {
+    async saveMeterReading(reading) {
+        if (this.isCloudMode()) {
+            return await this.supabase.saveMeterReading(reading);
+        }
         const readings = this.getMeterReadings();
         reading.id = reading.id || 'RD_' + Date.now();
         readings.unshift(reading); // Add to beginning (newest first)
         localStorage.setItem(STORAGE_KEYS.READINGS, JSON.stringify(readings));
         return reading;
     },
-    updateMeterReading(id, updatedFields) {
+    async updateMeterReading(id, updatedFields) {
+        if (this.isCloudMode()) {
+            return await this.supabase.updateMeterReading(id, updatedFields);
+        }
         const readings = this.getMeterReadings();
         const index = readings.findIndex(r => r.id === id);
         if (index >= 0) {
@@ -352,7 +370,10 @@ const db = {
 
     // Get Image helper
     getImageData(photoId) {
-        if (photoId && photoId.startsWith('data:image')) {
+        if (!photoId) {
+            return 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200"><rect width="100%" height="100%" fill="%231e293b"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%2364748b" font-family="sans-serif" font-size="14">No Image Data</text></svg>';
+        }
+        if (photoId.startsWith('data:image') || photoId.startsWith('http://') || photoId.startsWith('https://')) {
             return photoId;
         }
         return SEEDED_IMAGES[photoId] || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200"><rect width="100%" height="100%" fill="%231e293b"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%2364748b" font-family="sans-serif" font-size="14">No Image Data</text></svg>';

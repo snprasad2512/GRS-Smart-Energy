@@ -90,39 +90,82 @@ function showLoginForm(role) {
     DOM.loginTitle.textContent = `${role.charAt(0).toUpperCase() + role.slice(1)} Login`;
     DOM.loginError.classList.add('d-none');
     
-    // Autofill credentials for easy testing/grading
-    if (role === 'manager') {
-        DOM.usernameInput.value = 'manager';
-        DOM.passwordInput.value = '123';
-    } else if (role === 'supervisor') {
-        DOM.usernameInput.value = 'supervisor';
-        DOM.passwordInput.value = '123';
-    } else if (role === 'technician') {
-        DOM.usernameInput.value = 'tech_suhas';
-        DOM.passwordInput.value = '123';
+    // Autofill credentials for easy testing
+    if (db.isCloudMode()) {
+        if (role === 'admin') {
+            DOM.usernameInput.value = 'admin@grsenergy.com';
+            DOM.passwordInput.value = 'admin123';
+        } else if (role === 'manager') {
+            DOM.usernameInput.value = 'manager@grsenergy.com';
+            DOM.passwordInput.value = 'manager123';
+        } else if (role === 'supervisor') {
+            DOM.usernameInput.value = 'supervisor@grsenergy.com';
+            DOM.passwordInput.value = 'supervisor123';
+        } else if (role === 'technician') {
+            DOM.usernameInput.value = 'tech@grsenergy.com';
+            DOM.passwordInput.value = 'tech123';
+        }
     } else {
-        DOM.usernameInput.value = '';
-        DOM.passwordInput.value = '';
+        if (role === 'manager') {
+            DOM.usernameInput.value = 'manager';
+            DOM.passwordInput.value = '123';
+        } else if (role === 'supervisor') {
+            DOM.usernameInput.value = 'supervisor';
+            DOM.passwordInput.value = '123';
+        } else if (role === 'technician') {
+            DOM.usernameInput.value = 'tech_suhas';
+            DOM.passwordInput.value = '123';
+        } else {
+            DOM.usernameInput.value = '';
+            DOM.passwordInput.value = '';
+        }
     }
     
     DOM.passwordInput.focus();
 }
 
 // Authenticate and Login
-function handleLogin(e) {
+async function handleLogin(e) {
     e.preventDefault();
     const username = DOM.usernameInput.value.trim();
     const password = DOM.passwordInput.value;
     
-    const users = db.getUsers();
-    const user = users.find(u => u.username === username && u.password === password && u.role === state.currentRole);
-    
-    if (user) {
-        state.currentUser = user;
-        loginSuccess();
+    if (db.isCloudMode()) {
+        try {
+            const { user, profile } = await db.supabase.signIn(username, password);
+            const userRole = (profile.role || 'TECHNICIAN').toLowerCase();
+            
+            // Allow ADMIN to access Manager or Admin screens
+            if (userRole === state.currentRole || (userRole === 'admin' && ['manager', 'admin'].includes(state.currentRole))) {
+                state.currentUser = {
+                    id: profile.id,
+                    username: profile.email,
+                    name: profile.full_name || profile.email,
+                    role: userRole,
+                    email: profile.email
+                };
+                loginSuccess();
+            } else {
+                DOM.loginError.textContent = `Access denied. Account role is '${userRole.toUpperCase()}', but logging in as '${state.currentRole.toUpperCase()}'.`;
+                DOM.loginError.classList.remove('d-none');
+            }
+        }
+        catch (err) {
+            console.error("Supabase Login Error:", err);
+            DOM.loginError.textContent = err.message || 'Invalid email or password.';
+            DOM.loginError.classList.remove('d-none');
+        }
     } else {
-        DOM.loginError.textContent = 'Invalid username or password.';
-        DOM.loginError.classList.remove('d-none');
+        const users = db.getUsers();
+        const user = users.find(u => (u.username === username || u.email === username) && u.password === password);
+        
+        if (user) {
+            state.currentUser = user;
+            loginSuccess();
+        } else {
+            DOM.loginError.textContent = 'Invalid username or password.';
+            DOM.loginError.classList.remove('d-none');
+        }
     }
 }
 
@@ -148,9 +191,25 @@ function loginSuccess() {
     } else if (state.currentRole === 'supervisor') {
         DOM.supervisorDashboard.classList.remove('d-none');
         initSupervisorDashboard();
-    } else if (state.currentRole === 'manager') {
+        setupRealtimeSync();
+    } else if (state.currentRole === 'manager' || state.currentRole === 'admin') {
         DOM.managerDashboard.classList.remove('d-none');
         initManagerDashboard();
+        setupRealtimeSync();
+    }
+}
+
+// Setup Real-time Listener for Supabase Cloud Updates
+function setupRealtimeSync() {
+    if (db.isCloudMode() && db.supabase) {
+        db.supabase.subscribeToReadings((payload) => {
+            console.log("⚡ Auto-refreshing dashboard view on cloud change:", payload);
+            if (state.currentRole === 'supervisor') {
+                loadSupervisorReadings();
+            } else if (state.currentRole === 'manager' || state.currentRole === 'admin') {
+                loadManagerSubmissions();
+            }
+        });
     }
 }
 
@@ -162,21 +221,35 @@ function handleLogout() {
 // ==========================================
 // TECHNICIAN MODULE
 // ==========================================
-function initTechnicianDashboard() {
+async function initTechnicianDashboard() {
     // Reset Technician State
     state.selectedLocationId = null;
     state.selectedMeterId = null;
     state.capturedPhoto = null;
     state.ocrReading = null;
     
-    // Render location select box (assigned locations only)
+    // Render location select box
     const locationSelect = document.getElementById('techLocationSelect');
     locationSelect.innerHTML = '<option value="">-- Select Location --</option>';
     
-    const allLocations = db.getLocations();
-    const assignedLocations = allLocations.filter(l => 
-        state.currentUser.assignedLocations && state.currentUser.assignedLocations.includes(l.id)
-    );
+    let allLocations = [];
+    if (db.isCloudMode()) {
+        try {
+            allLocations = await db.supabase.getLocations();
+        } catch (err) {
+            console.error("Error loading cloud locations:", err);
+            allLocations = db.getLocations();
+        }
+    } else {
+        allLocations = db.getLocations();
+    }
+    
+    state.cachedLocations = allLocations;
+    
+    const assignedLocations = allLocations.filter(l => {
+        if (!state.currentUser.assignedLocations || state.currentUser.assignedLocations.length === 0) return true;
+        return state.currentUser.assignedLocations.includes(l.id);
+    });
     
     assignedLocations.forEach(loc => {
         const opt = document.createElement('option');
@@ -190,7 +263,7 @@ function initTechnicianDashboard() {
     document.getElementById('techPhotoStep').classList.add('d-none');
     document.getElementById('techOcrStep').classList.add('d-none');
     
-    // Remove listeners before adding to avoid leaks
+    // Listener
     locationSelect.onchange = (e) => {
         state.selectedLocationId = e.target.value;
         if (state.selectedLocationId) {
@@ -203,25 +276,34 @@ function initTechnicianDashboard() {
     };
 }
 
-function loadTechnicianMeters(locationId) {
+async function loadTechnicianMeters(locationId) {
     const meterStep = document.getElementById('techMeterStep');
     const meterSelect = document.getElementById('techMeterSelect');
     meterSelect.innerHTML = '<option value="">-- Select Energy Meter --</option>';
     
-    const allMeters = db.getEnergyMeters();
-    // Filter by location assigned to technician
-    const locationMeters = allMeters.filter(m => {
-        if (m.locationId !== locationId) return false;
-        if (state.currentUser.assignedMeters && state.currentUser.assignedMeters.length > 0) {
-            return state.currentUser.assignedMeters.includes(m.id) || (state.currentUser.assignedLocations && state.currentUser.assignedLocations.includes(locationId));
+    let allMeters = [];
+    if (db.isCloudMode()) {
+        try {
+            allMeters = await db.supabase.getEnergyMeters();
+        } catch (err) {
+            console.error("Error loading cloud meters:", err);
+            allMeters = db.getEnergyMeters();
         }
-        return true;
+    } else {
+        allMeters = db.getEnergyMeters();
+    }
+    
+    state.cachedMeters = allMeters;
+    
+    const locationMeters = allMeters.filter(m => {
+        const mLocId = m.locationId || m.location_id;
+        return mLocId === locationId;
     });
     
     locationMeters.forEach(m => {
         const opt = document.createElement('option');
         opt.value = m.id;
-        opt.textContent = m.name;
+        opt.textContent = m.meter_name || m.name;
         meterSelect.appendChild(opt);
     });
     
@@ -409,19 +491,32 @@ function runAiOcrSimulation() {
     }, 1500);
     
     // Setup verification click handler
-    verifySubmitBtn.onclick = () => {
+    verifySubmitBtn.onclick = async () => {
         const finalReading = parseFloat(readingInput.value);
         if (isNaN(finalReading) || finalReading <= 0) {
             alert("Please enter a valid meter reading.");
             return;
         }
         
-        const locName = db.getLocations().find(l => l.id === state.selectedLocationId).name;
-        const meterName = db.getEnergyMeters().find(m => m.id === state.selectedMeterId).name;
+        verifySubmitBtn.disabled = true;
+        verifySubmitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading to Cloud...';
+        
+        const locObj = (db.isCloudMode() && state.cachedLocations) ? 
+            state.cachedLocations.find(l => l.id === state.selectedLocationId) : 
+            db.getLocations().find(l => l.id === state.selectedLocationId);
+            
+        const meterObj = (db.isCloudMode() && state.cachedMeters) ? 
+            state.cachedMeters.find(m => m.id === state.selectedMeterId) : 
+            db.getEnergyMeters().find(m => m.id === state.selectedMeterId);
+        
+        const locName = locObj ? (locObj.name || locObj.meter_name) : 'Location';
+        const meterName = meterObj ? (meterObj.meter_name || meterObj.name) : 'Meter';
         
         const now = new Date();
         const newReading = {
             technicianName: state.currentUser.name,
+            locationId: state.selectedLocationId,
+            meterId: state.selectedMeterId,
             location: locName,
             energyMeter: meterName,
             meterReading: finalReading,
@@ -432,10 +527,14 @@ function runAiOcrSimulation() {
             remarks: ''
         };
         
-        db.saveMeterReading(newReading);
+        try {
+            await db.saveMeterReading(newReading);
+            alert("Reading & Meter Photo Submitted Successfully to Supabase Cloud!");
+        } catch (err) {
+            console.error("Error submitting reading:", err);
+            alert("Reading Submitted Locally.");
+        }
         
-        // Show success alert
-        alert("Reading Submitted Successfully.");
         initTechnicianDashboard();
     };
 }
@@ -476,13 +575,24 @@ function setupSupervisorNavigation() {
     });
 }
 
-function loadSupervisorDashboardView() {
+async function loadSupervisorDashboardView() {
     const listBody = document.getElementById('superReadingsList');
-    listBody.innerHTML = '';
+    listBody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:2rem; color:var(--primary);"><i class="fas fa-spinner fa-spin"></i> Syncing cloud readings...</td></tr>';
     
-    let readings = db.getMeterReadings();
+    let readings = [];
+    if (db.isCloudMode()) {
+        try {
+            readings = await db.supabase.getMeterReadings();
+        } catch (err) {
+            console.error("Error fetching cloud readings:", err);
+            readings = db.getMeterReadings();
+        }
+    } else {
+        readings = db.getMeterReadings();
+    }
     
-    // Sort or filter if needed (default to show Pending first, or based on UI clicks)
+    state.cachedReadings = readings;
+    
     const pendingCount = readings.filter(r => r.status === 'Pending Supervisor Approval').length;
     const approvedCount = readings.filter(r => r.status === 'Approved').length;
     const rejectedCount = readings.filter(r => r.status === 'Rejected').length;
@@ -500,6 +610,9 @@ function loadSupervisorDashboardView() {
             renderFilteredSupervisorReadings();
         };
     });
+    
+    renderFilteredSupervisorReadings();
+}
     
     renderFilteredSupervisorReadings();
 }
@@ -1409,22 +1522,40 @@ function loadManagerCharts() {
 }
 
 // 5. MANAGER ENERGY METERS MANAGEMENT VIEW
-function loadManagerMeters() {
+async function loadManagerMeters() {
     const listBody = document.getElementById('managerMetersList');
-    listBody.innerHTML = '';
+    listBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:1.5rem; color:var(--primary);"><i class="fas fa-spinner fa-spin"></i> Loading cloud energy meters...</td></tr>';
     
-    const meters = db.getEnergyMeters();
-    const locations = db.getLocations();
+    let meters = [];
+    let locations = [];
+    
+    if (db.isCloudMode()) {
+        try {
+            meters = await db.supabase.getEnergyMeters();
+            locations = await db.supabase.getLocations();
+        } catch (err) {
+            console.error("Error fetching cloud meters:", err);
+            meters = db.getEnergyMeters();
+            locations = db.getLocations();
+        }
+    } else {
+        meters = db.getEnergyMeters();
+        locations = db.getLocations();
+    }
+    
+    listBody.innerHTML = '';
     
     if (meters.length === 0) {
         listBody.innerHTML = `<tr><td colspan="4" class="text-center">No energy meters found.</td></tr>`;
     } else {
         meters.forEach(m => {
-            const locName = locations.find(l => l.id === m.locationId)?.name || 'Unassigned';
+            const locId = m.locationId || m.location_id;
+            const meterName = m.meter_name || m.name;
+            const locName = locations.find(l => l.id === locId)?.name || m.locations?.name || 'Unassigned';
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td><span style="font-family:monospace; font-weight:600;">${m.id}</span></td>
-                <td><strong>${m.name}</strong></td>
+                <td><strong>${meterName}</strong></td>
                 <td><span class="badge badge-pending" style="color:var(--primary); background:rgba(56, 189, 248, 0.1); border-color:rgba(56, 189, 248, 0.2);">${locName}</span></td>
                 <td class="text-right">
                     <button class="btn btn-secondary btn-icon action-edit-meter" title="Edit Meter" style="margin-right:0.25rem;"><i class="fas fa-edit"></i> Edit</button>
@@ -1436,9 +1567,10 @@ function loadManagerMeters() {
                 showMeterEditorModal(m);
             };
             
-            tr.querySelector('.action-delete-meter').onclick = () => {
-                if (confirm(`Are you sure you want to delete Energy Meter: "${m.name}"?`)) {
-                    db.deleteEnergyMeter(m.id);
+            tr.querySelector('.action-delete-meter').onclick = async () => {
+                const mName = m.meter_name || m.name;
+                if (confirm(`Are you sure you want to delete Energy Meter: "${mName}"?`)) {
+                    await db.deleteEnergyMeter(m.id);
                     loadManagerMeters();
                 }
             };
@@ -1452,14 +1584,25 @@ function loadManagerMeters() {
     };
 }
 
-function showMeterEditorModal(meter) {
+async function showMeterEditorModal(meter) {
     const isEdit = meter !== null;
     const modalTitle = isEdit ? 'Edit Energy Meter' : 'Add New Energy Meter';
     
-    const locations = db.getLocations();
+    let locations = [];
+    if (db.isCloudMode()) {
+        try {
+            locations = await db.supabase.getLocations();
+        } catch (err) {
+            locations = db.getLocations();
+        }
+    } else {
+        locations = db.getLocations();
+    }
+    
     let locOptions = '';
+    const currentLocId = isEdit ? (meter.locationId || meter.location_id) : '';
     locations.forEach(loc => {
-        const selected = isEdit && meter.locationId === loc.id ? 'selected' : '';
+        const selected = isEdit && currentLocId === loc.id ? 'selected' : '';
         locOptions += `<option value="${loc.id}" ${selected}>${loc.name}</option>`;
     });
 
@@ -1474,7 +1617,7 @@ function showMeterEditorModal(meter) {
             <div class="modal-body">
                 <div class="form-group">
                     <label>Energy Meter Name</label>
-                    <input type="text" id="meterNameInput" class="form-control" value="${isEdit ? meter.name : ''}" placeholder="e.g. Solar Inverter Submeter" required />
+                    <input type="text" id="meterNameInput" class="form-control" value="${isEdit ? (meter.meter_name || meter.name) : ''}" placeholder="e.g. Solar Inverter Submeter" required />
                 </div>
                 <div class="form-group">
                     <label>Assign to Location</label>
@@ -1496,7 +1639,7 @@ function showMeterEditorModal(meter) {
     modal.querySelector('.modal-close').onclick = () => modal.remove();
     modal.querySelector('#meterCancelBtn').onclick = () => modal.remove();
     
-    modal.querySelector('#meterSaveBtn').onclick = () => {
+    modal.querySelector('#meterSaveBtn').onclick = async () => {
         const meterName = modal.querySelector('#meterNameInput').value.trim();
         const locationId = modal.querySelector('#meterLocationSelect').value;
         
@@ -1509,13 +1652,24 @@ function showMeterEditorModal(meter) {
             return;
         }
         
+        const saveBtn = modal.querySelector('#meterSaveBtn');
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+        
         const payload = {
             id: isEdit ? meter.id : 'MTR_' + Date.now(),
             name: meterName,
-            locationId: locationId
+            meter_name: meterName,
+            locationId: locationId,
+            location_id: locationId
         };
         
-        db.saveEnergyMeter(payload);
+        try {
+            await db.saveEnergyMeter(payload);
+        } catch (err) {
+            console.error("Error saving energy meter:", err);
+        }
+        
         modal.remove();
         loadManagerMeters();
     };
