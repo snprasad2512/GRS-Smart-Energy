@@ -1174,11 +1174,27 @@ function loadManagerSubmissions() {
 }
 
 // 2. MANAGER USERS (TECHNICIAN CRUD) VIEW
-function loadManagerUsers() {
+async function loadManagerUsers() {
     const listBody = document.getElementById('managerUsersList');
     listBody.innerHTML = '';
     
-    const users = db.getUsers().filter(u => u.role === 'technician');
+    let users = db.getUsers().filter(u => u.role === 'technician');
+    let cloudProfiles = [];
+    
+    if (db.isCloudMode()) {
+        try {
+            cloudProfiles = await db.supabase.getProfiles();
+            // Merge cloud profiles with local users list
+            users.forEach(u => {
+                const matched = cloudProfiles.find(p => p.email === u.username || p.id === u.id);
+                if (matched && matched.full_name) {
+                    u.name = matched.full_name;
+                }
+            });
+        } catch (err) {
+            console.error("Error fetching cloud profiles:", err);
+        }
+    }
     
     users.forEach(u => {
         const tr = document.createElement('tr');
@@ -1340,7 +1356,7 @@ function showUserEditorModal(techUser) {
     // Trigger initially
     updateMeterVisibilityOnEdit(modal);
     
-    modal.querySelector('#editorSave').onclick = () => {
+    modal.querySelector('#editorSave').onclick = async () => {
         const fullName = modal.querySelector('#techFullName').value.trim();
         const username = modal.querySelector('#techUsername').value.trim();
         const password = modal.querySelector('#techPassword').value.trim();
@@ -1354,15 +1370,26 @@ function showUserEditorModal(techUser) {
         const checkedMtrs = Array.from(modal.querySelectorAll('input[name="assignedMtr"]:checked')).map(chk => chk.value);
         
         const payload = {
+            id: isEdit ? techUser.id : null,
             username: username,
             password: password,
             name: fullName,
+            full_name: fullName,
             role: 'technician',
             assignedLocations: checkedLocs,
             assignedMeters: checkedMtrs
         };
         
-        db.saveUser(payload);
+        const saveBtn = modal.querySelector('#editorSave');
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+        
+        try {
+            await db.saveUser(payload);
+        } catch (err) {
+            console.error("Error saving user:", err);
+        }
+        
         modal.remove();
         loadManagerUsers();
     };

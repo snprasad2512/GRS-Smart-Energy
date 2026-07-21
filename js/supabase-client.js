@@ -106,13 +106,24 @@ export const supabaseApi = {
             meter_number: meter.meter_number || meter.number || 'MTR-' + Date.now().toString().slice(-4),
             active: true
         };
-        if (meter.id && !meter.id.startsWith('MTR_')) {
+        if (meter.id) {
             payload.id = meter.id;
         }
         
         const { data, error } = await supabaseClient
             .from('energy_meters')
             .upsert(payload)
+            .select();
+        if (error) throw error;
+        return data[0];
+    },
+
+    async updateProfile(userId, updateData) {
+        if (!supabaseClient) return null;
+        const { data, error } = await supabaseClient
+            .from('profiles')
+            .update(updateData)
+            .eq('id', userId)
             .select();
         if (error) throw error;
         return data[0];

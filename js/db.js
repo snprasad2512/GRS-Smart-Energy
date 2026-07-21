@@ -269,15 +269,23 @@ const db = {
     getUsers() {
         return JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]');
     },
-    saveUser(user) {
+    async saveUser(user) {
         const users = this.getUsers();
-        const existingIndex = users.findIndex(u => u.username === user.username);
+        const existingIndex = users.findIndex(u => u.username === user.username || u.id === user.id);
         if (existingIndex >= 0) {
             users[existingIndex] = { ...users[existingIndex], ...user };
         } else {
             users.push(user);
         }
         localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+
+        if (this.isCloudMode() && user.id) {
+            try {
+                await this.supabase.updateProfile(user.id, { full_name: user.name || user.full_name });
+            } catch (err) {
+                console.error("Cloud profile update note:", err);
+            }
+        }
         return user;
     },
     deleteUser(username) {
