@@ -135,8 +135,8 @@ async function handleLogin(e) {
             const { user, profile } = await db.supabase.signIn(username, password);
             const userRole = (profile.role || 'TECHNICIAN').toLowerCase();
             
-            // Allow ADMIN to access Manager or Admin screens
-            if (userRole === state.currentRole || (userRole === 'admin' && ['manager', 'admin'].includes(state.currentRole))) {
+            // Allow ADMIN to access any role dashboard for easy testing
+            if (userRole === state.currentRole || userRole === 'admin') {
                 state.currentUser = {
                     id: profile.id,
                     username: profile.email,

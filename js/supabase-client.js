@@ -22,13 +22,38 @@ export const supabaseApi = {
         if (error) throw error;
         
         // Fetch matching profile
-        const { data: profile, error: profileErr } = await supabaseClient
+        let { data: profile, error: profileErr } = await supabaseClient
             .from('profiles')
             .select('*')
             .eq('id', data.user.id)
-            .single();
+            .maybeSingle();
             
         if (profileErr) throw profileErr;
+        
+        // Self-heal: Create profile record if it is missing
+        if (!profile) {
+            const roleGuess = email.toLowerCase().includes('admin') ? 'ADMIN' : 
+                              email.toLowerCase().includes('manager') ? 'MANAGER' : 
+                              email.toLowerCase().includes('supervisor') ? 'SUPERVISOR' : 'TECHNICIAN';
+            
+            const newProfile = {
+                id: data.user.id,
+                email: email,
+                full_name: email.split('@')[0],
+                role: roleGuess,
+                active: true
+            };
+            
+            const { data: inserted, error: insertErr } = await supabaseClient
+                .from('profiles')
+                .insert(newProfile)
+                .select()
+                .single();
+                
+            if (insertErr) throw insertErr;
+            profile = inserted;
+        }
+        
         return { user: data.user, profile };
     },
 
