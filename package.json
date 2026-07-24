@@ -1,0 +1,9 @@
+{
+  "name": "grs-smart-energy",
+  "version": "1.0.0",
+  "description": "GRS Smart Energy Monitoring System",
+  "private": true,
+  "scripts": {
+    "build": "echo 'Static build skipped. Serving static index.html directly.'"
+  }
+}
