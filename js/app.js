@@ -441,8 +441,11 @@ function showSimulatedCamera(onCapture) {
         } else {
             // Generate a realistic mock meter reading image as SVG base64
             const rVal = (Math.random() * 5000 + 10000).toFixed(1);
-            const meterName = db.getEnergyMeters().find(m => m.id === state.selectedMeterId)?.name || 'Meter';
-            base64Img = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:%230f172a"/><stop offset="100%" style="stop-color:%231e293b"/></linearGradient></defs><rect width="100%" height="100%" fill="url(%23g)"/><text x="50%" y="45%" dominant-baseline="middle" text-anchor="middle" fill="%2338bdf8" font-family="monospace" font-size="28">${rVal} kWh</text><text x="50%" y="70%" dominant-baseline="middle" text-anchor="middle" fill="%2364748b" font-family="sans-serif" font-size="12">METER: ${meterName}</text></svg>`;
+            const selectedMeter = (db.isCloudMode() && state.cachedMeters) ? 
+                state.cachedMeters.find(m => m.id === state.selectedMeterId) : 
+                db.getEnergyMeters().find(m => m.id === state.selectedMeterId);
+            const mName = selectedMeter ? (selectedMeter.meter_name || selectedMeter.name) : 'Meter';
+            base64Img = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:%230f172a"/><stop offset="100%" style="stop-color:%231e293b"/></linearGradient></defs><rect width="100%" height="100%" fill="url(%23g)"/><text x="50%" y="45%" dominant-baseline="middle" text-anchor="middle" fill="%2338bdf8" font-family="monospace" font-size="28">${rVal} kWh</text><text x="50%" y="70%" dominant-baseline="middle" text-anchor="middle" fill="%2364748b" font-family="sans-serif" font-size="12">METER: ${mName}</text></svg>`;
         }
         
         onCapture(base64Img);
@@ -450,7 +453,7 @@ function showSimulatedCamera(onCapture) {
     };
 }
 
-function runAiOcrSimulation() {
+async function runAiOcrSimulation() {
     const ocrStep = document.getElementById('techOcrStep');
     ocrStep.classList.remove('d-none');
     
@@ -462,6 +465,21 @@ function runAiOcrSimulation() {
     ocrLoading.classList.remove('d-none');
     ocrResultBox.style.display = 'none';
     verifySubmitBtn.disabled = true;
+
+    let allReadings = [];
+    let allMeters = [];
+    if (db.isCloudMode()) {
+        try {
+            allReadings = await db.supabase.getMeterReadings();
+            allMeters = await db.supabase.getEnergyMeters();
+        } catch (err) {
+            allReadings = db.getMeterReadings();
+            allMeters = db.getEnergyMeters();
+        }
+    } else {
+        allReadings = db.getMeterReadings();
+        allMeters = db.getEnergyMeters();
+    }
     
     // Simulate OCR delay (1.5 seconds)
     setTimeout(() => {
@@ -470,11 +488,11 @@ function runAiOcrSimulation() {
         verifySubmitBtn.disabled = false;
         
         // Generate a simulated reading based on history of this meter
-        const allReadings = db.getMeterReadings();
-        const selectedMeter = db.getEnergyMeters().find(m => m.id === state.selectedMeterId);
+        const selectedMeter = allMeters.find(m => m.id === state.selectedMeterId);
+        const mName = selectedMeter ? (selectedMeter.meter_name || selectedMeter.name) : 'Meter';
         
         // Find previous reading for this meter
-        const prevReadings = allReadings.filter(r => r.energyMeter === selectedMeter.name && r.status === 'Approved');
+        const prevReadings = allReadings.filter(r => r.energyMeter === mName && r.status === 'Approved');
         let baseReading = 10000; // default starting point
         if (prevReadings.length > 0) {
             // Get highest reading
@@ -783,17 +801,25 @@ function showReviewModal(reading) {
         });
         modal.remove();
         loadSupervisorDashboardView();
-    };
-}
-
 // Supervisor Dashboard Reports Controller
-function loadSupervisorReportView(reportKey) {
+async function loadSupervisorReportView(reportKey) {
     const reportTitle = document.getElementById('superReportTitle');
     const reportContainer = document.getElementById('superReportContainer');
     
-    reportContainer.innerHTML = '';
+    reportContainer.innerHTML = '<div class="text-center" style="padding:3rem; color:var(--primary);"><i class="fas fa-spinner fa-spin"></i> Loading report data...</div>';
     
-    const readings = db.getMeterReadings();
+    let readings = [];
+    if (db.isCloudMode()) {
+        try {
+            readings = await db.supabase.getMeterReadings();
+        } catch (err) {
+            console.error("Error loading cloud report readings:", err);
+            readings = db.getMeterReadings();
+        }
+    } else {
+        readings = db.getMeterReadings();
+    }
+    
     const approvedReadings = readings.filter(r => r.status === 'Approved');
     const pendingReadings = readings.filter(r => r.status === 'Pending Supervisor Approval');
     
@@ -1129,11 +1155,23 @@ function setupManagerNavigation() {
 }
 
 // 1. MANAGER SUBMISSIONS VIEW
-function loadManagerSubmissions() {
+async function loadManagerSubmissions() {
     const listBody = document.getElementById('managerReadingsList');
-    listBody.innerHTML = '';
+    listBody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:2rem; color:var(--primary);"><i class="fas fa-spinner fa-spin"></i> Syncing cloud submissions...</td></tr>';
     
-    const readings = db.getMeterReadings();
+    let readings = [];
+    if (db.isCloudMode()) {
+        try {
+            readings = await db.supabase.getMeterReadings();
+        } catch (err) {
+            console.error("Error loading cloud manager submissions:", err);
+            readings = db.getMeterReadings();
+        }
+    } else {
+        readings = db.getMeterReadings();
+    }
+    
+    listBody.innerHTML = '';
     
     if (readings.length === 0) {
         listBody.innerHTML = `<tr><td colspan="7" class="text-center">No technician submissions yet.</td></tr>`;
@@ -1180,10 +1218,13 @@ async function loadManagerUsers() {
     
     let users = db.getUsers().filter(u => u.role === 'technician');
     let cloudProfiles = [];
-    
+    let locations = [];
+    let meters = [];
     if (db.isCloudMode()) {
         try {
             cloudProfiles = await db.supabase.getProfiles();
+            locations = await db.supabase.getLocations();
+            meters = await db.supabase.getEnergyMeters();
             // Merge cloud profiles with local users list
             users.forEach(u => {
                 const matched = cloudProfiles.find(p => p.email === u.username || p.id === u.id);
@@ -1193,21 +1234,26 @@ async function loadManagerUsers() {
             });
         } catch (err) {
             console.error("Error fetching cloud profiles:", err);
+            locations = db.getLocations();
+            meters = db.getEnergyMeters();
         }
+    } else {
+        locations = db.getLocations();
+        meters = db.getEnergyMeters();
     }
     
     users.forEach(u => {
         const tr = document.createElement('tr');
         
         // Resolve location and meter names
-        const locNames = db.getLocations()
+        const locNames = locations
             .filter(l => u.assignedLocations && u.assignedLocations.includes(l.id))
             .map(l => l.name)
             .join(', ');
             
-        const meterNames = db.getEnergyMeters()
+        const meterNames = meters
             .filter(m => u.assignedMeters && u.assignedMeters.includes(m.id))
-            .map(m => m.name)
+            .map(m => m.meter_name || m.name)
             .join(', ');
             
         tr.innerHTML = `
@@ -1244,7 +1290,7 @@ async function loadManagerUsers() {
     };
 }
 
-function showUserEditorModal(techUser) {
+async function showUserEditorModal(techUser) {
     state.editingUser = techUser;
     
     const isEdit = techUser !== null;
@@ -1253,8 +1299,20 @@ function showUserEditorModal(techUser) {
     const modal = document.createElement('div');
     modal.className = 'modal-backdrop show';
     
-    const allLocations = db.getLocations();
-    const allMeters = db.getEnergyMeters();
+    let allLocations = [];
+    let allMeters = [];
+    if (db.isCloudMode()) {
+        try {
+            allLocations = await db.supabase.getLocations();
+            allMeters = await db.supabase.getEnergyMeters();
+        } catch (err) {
+            allLocations = db.getLocations();
+            allMeters = db.getEnergyMeters();
+        }
+    } else {
+        allLocations = db.getLocations();
+        allMeters = db.getEnergyMeters();
+    }
     
     // Build locations checkbox HTML
     let locCheckboxes = '';
@@ -1272,11 +1330,13 @@ function showUserEditorModal(techUser) {
     let meterCheckboxes = '';
     allMeters.forEach(m => {
         const checked = isEdit && techUser.assignedMeters && techUser.assignedMeters.includes(m.id) ? 'checked' : '';
-        const locName = allLocations.find(l => l.id === m.locationId)?.name || 'Unknown';
+        const mLocId = m.locationId || m.location_id;
+        const locName = allLocations.find(l => l.id === mLocId)?.name || m.locations?.name || 'Unknown';
+        const mName = m.meter_name || m.name;
         meterCheckboxes += `
-            <label style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.4rem; cursor:pointer;" class="meter-chk-wrapper" data-loc="${m.locationId}">
+            <label style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.4rem; cursor:pointer;" class="meter-chk-wrapper" data-loc="${mLocId}">
                 <input type="checkbox" name="assignedMtr" value="${m.id}" ${checked} />
-                <span>${m.name} <span style="font-size:0.75rem; color:var(--text-muted);">(${locName})</span></span>
+                <span>${mName} <span style="font-size:0.75rem; color:var(--text-muted);">(${locName})</span></span>
             </label>
         `;
     });
@@ -1412,19 +1472,37 @@ function updateMeterVisibilityOnEdit(modal) {
 // 3. MANAGER REPORTS & LOGS VIEW (WITH EXPORTS)
 let managerFilteredReadings = [];
 
-function loadManagerReports() {
+async function loadManagerReports() {
     // Fill up filters dynamically
     const filterLoc = document.getElementById('mgrFilterLocation');
     const filterTech = document.getElementById('mgrFilterTech');
     
     filterLoc.innerHTML = '<option value="">All Locations</option>';
-    db.getLocations().forEach(l => {
+    
+    let locations = [];
+    let users = [];
+    if (db.isCloudMode()) {
+        try {
+            locations = await db.supabase.getLocations();
+            const profiles = await db.supabase.getProfiles();
+            users = profiles.filter(p => p.role === 'TECHNICIAN');
+        } catch (err) {
+            locations = db.getLocations();
+            users = db.getUsers().filter(u => u.role === 'technician');
+        }
+    } else {
+        locations = db.getLocations();
+        users = db.getUsers().filter(u => u.role === 'technician');
+    }
+    
+    locations.forEach(l => {
         filterLoc.innerHTML += `<option value="${l.name}">${l.name}</option>`;
     });
     
     filterTech.innerHTML = '<option value="">All Technicians</option>';
-    db.getUsers().filter(u => u.role === 'technician').forEach(t => {
-        filterTech.innerHTML += `<option value="${t.name}">${t.name}</option>`;
+    users.forEach(t => {
+        const tName = t.full_name || t.name;
+        filterTech.innerHTML += `<option value="${tName}">${tName}</option>`;
     });
     
     // Bind filters
@@ -1442,17 +1520,29 @@ function loadManagerReports() {
     document.getElementById('mgrExportExcelBtn').onclick = exportReportToCSV;
     document.getElementById('mgrExportPdfBtn').onclick = exportReportToPDF;
     
-    applyManagerReportFilters();
+    await applyManagerReportFilters();
 }
 
-function applyManagerReportFilters() {
+async function applyManagerReportFilters() {
     const start = document.getElementById('mgrFilterDateStart').value;
     const end = document.getElementById('mgrFilterDateEnd').value;
     const loc = document.getElementById('mgrFilterLocation').value;
     const tech = document.getElementById('mgrFilterTech').value;
     const status = document.getElementById('mgrFilterStatus').value;
     
-    let list = db.getMeterReadings();
+    const listBody = document.getElementById('mgrReportsListBody');
+    listBody.innerHTML = '<tr><td colspan="7" class="text-center" style="padding:2rem;"><i class="fas fa-spinner fa-spin"></i> Filtering report data...</td></tr>';
+    
+    let list = [];
+    if (db.isCloudMode()) {
+        try {
+            list = await db.supabase.getMeterReadings();
+        } catch (err) {
+            list = db.getMeterReadings();
+        }
+    } else {
+        list = db.getMeterReadings();
+    }
     
     if (start) {
         list = list.filter(r => r.date >= start);
@@ -1543,8 +1633,18 @@ function exportReportToPDF() {
 }
 
 // 4. MANAGER CHARTS VIEW
-function loadManagerCharts() {
-    const readings = db.getMeterReadings();
+async function loadManagerCharts() {
+    let readings = [];
+    if (db.isCloudMode()) {
+        try {
+            readings = await db.supabase.getMeterReadings();
+        } catch (err) {
+            console.error("Error loading cloud chart readings:", err);
+            readings = db.getMeterReadings();
+        }
+    } else {
+        readings = db.getMeterReadings();
+    }
     renderDashboardCharts(readings);
 }
 
