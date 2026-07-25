@@ -271,7 +271,19 @@ const db = {
     },
     async saveUser(user) {
         const users = this.getUsers();
-        const existingIndex = users.findIndex(u => u.username === user.username || u.id === user.id);
+        
+        if (this.isCloudMode() && !user.id) {
+            try {
+                const authRes = await this.supabase.signUpUser(user.username, user.password, user.name, 'TECHNICIAN');
+                if (authRes && authRes.user) {
+                    user.id = authRes.user.id;
+                }
+            } catch (err) {
+                console.error("Cloud auth signup error:", err);
+            }
+        }
+
+        const existingIndex = users.findIndex(u => u.username === user.username || (user.id && u.id === user.id));
         if (existingIndex >= 0) {
             users[existingIndex] = { ...users[existingIndex], ...user };
         } else {
@@ -282,16 +294,27 @@ const db = {
         if (this.isCloudMode() && user.id) {
             try {
                 await this.supabase.updateProfile(user.id, { full_name: user.name || user.full_name });
+                if (user.assignedLocations) {
+                    await this.supabase.saveUserAssignments(user.id, user.assignedLocations);
+                }
             } catch (err) {
-                console.error("Cloud profile update note:", err);
+                console.error("Cloud profile & assignments update note:", err);
             }
         }
         return user;
     },
-    deleteUser(username) {
+    async deleteUser(username, userId) {
         let users = this.getUsers();
-        users = users.filter(u => u.username !== username);
+        users = users.filter(u => u.username !== username && u.id !== userId);
         localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+
+        if (this.isCloudMode() && userId) {
+            try {
+                await this.supabase.deleteProfile(userId);
+            } catch (err) {
+                console.error("Cloud profile soft-delete error:", err);
+            }
+        }
         return true;
     },
 

@@ -24,7 +24,7 @@ export const supabaseApi = {
         // Fetch matching profile
         let { data: profile, error: profileErr } = await supabaseClient
             .from('profiles')
-            .select('*')
+            .select('*, user_location_assignments(location_id)')
             .eq('id', data.user.id)
             .maybeSingle();
             
@@ -52,7 +52,11 @@ export const supabaseApi = {
                 
             if (insertErr) throw insertErr;
             profile = inserted;
+            profile.user_location_assignments = [];
         }
+        
+        // Map assignments to flat array
+        profile.assignedLocations = (profile.user_location_assignments || []).map(a => a.location_id);
         
         return { user: data.user, profile };
     },
@@ -79,10 +83,26 @@ export const supabaseApi = {
         if (!supabaseClient) return [];
         const { data, error } = await supabaseClient
             .from('profiles')
-            .select('*')
+            .select('*, user_location_assignments(location_id)')
+            .eq('active', true)
             .order('created_at', { ascending: false });
         if (error) throw error;
-        return data || [];
+        
+        // Map assignments flat array
+        return (data || []).map(p => ({
+            ...p,
+            assignedLocations: (p.user_location_assignments || []).map(a => a.location_id)
+        }));
+    },
+
+    async deleteProfile(userId) {
+        if (!supabaseClient) return false;
+        const { error } = await supabaseClient
+            .from('profiles')
+            .update({ active: false })
+            .eq('id', userId);
+        if (error) throw error;
+        return true;
     },
 
     // ------------------------------------------------------------------------
@@ -152,6 +172,29 @@ export const supabaseApi = {
             .select();
         if (error) throw error;
         return data[0];
+    },
+
+    async saveUserAssignments(userId, locationIds) {
+        if (!supabaseClient) return false;
+        const { error: deleteErr } = await supabaseClient
+            .from('user_location_assignments')
+            .delete()
+            .eq('user_id', userId);
+            
+        if (deleteErr) throw deleteErr;
+        
+        if (locationIds && locationIds.length > 0) {
+            const inserts = locationIds.map(locId => ({
+                user_id: userId,
+                location_id: locId
+            }));
+            const { error: insertErr } = await supabaseClient
+                .from('user_location_assignments')
+                .insert(inserts);
+                
+            if (insertErr) throw insertErr;
+        }
+        return true;
     },
 
     async deleteEnergyMeter(meterId) {

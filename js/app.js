@@ -1264,28 +1264,31 @@ async function loadManagerUsers() {
     const listBody = document.getElementById('managerUsersList');
     listBody.innerHTML = '';
     
-    let users = db.getUsers().filter(u => u.role === 'technician');
-    let cloudProfiles = [];
+    let users = [];
     let locations = [];
     let meters = [];
+    
     if (db.isCloudMode()) {
         try {
-            cloudProfiles = await db.supabase.getProfiles();
+            const cloudProfiles = await db.supabase.getProfiles();
+            users = cloudProfiles.filter(p => p.role === 'TECHNICIAN').map(p => ({
+                id: p.id,
+                username: p.email,
+                name: p.full_name || p.email,
+                password: '***',
+                role: 'technician',
+                assignedLocations: p.assignedLocations || []
+            }));
             locations = await db.supabase.getLocations();
             meters = await db.supabase.getEnergyMeters();
-            // Merge cloud profiles with local users list
-            users.forEach(u => {
-                const matched = cloudProfiles.find(p => p.email === u.username || p.id === u.id);
-                if (matched && matched.full_name) {
-                    u.name = matched.full_name;
-                }
-            });
         } catch (err) {
             console.error("Error fetching cloud profiles:", err);
+            users = db.getUsers().filter(u => u.role === 'technician');
             locations = db.getLocations();
             meters = db.getEnergyMeters();
         }
     } else {
+        users = db.getUsers().filter(u => u.role === 'technician');
         locations = db.getLocations();
         meters = db.getEnergyMeters();
     }
@@ -1322,9 +1325,18 @@ async function loadManagerUsers() {
             showUserEditorModal(u);
         };
         
-        tr.querySelector('.action-delete-user').onclick = () => {
+        tr.querySelector('.action-delete-user').onclick = async () => {
             if(confirm(`Are you sure you want to delete Technician: ${u.name}?`)) {
-                db.deleteUser(u.username);
+                const delBtn = tr.querySelector('.action-delete-user');
+                delBtn.disabled = true;
+                delBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                
+                try {
+                    await db.deleteUser(u.username, u.id);
+                } catch (err) {
+                    console.error("Error deleting user:", err);
+                }
+                
                 loadManagerUsers();
             }
         };
