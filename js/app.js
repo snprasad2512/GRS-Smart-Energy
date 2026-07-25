@@ -39,6 +39,7 @@ const DOM = {
     // Header controls
     headerUserRole: document.getElementById('headerUserRole'),
     headerUserName: document.getElementById('headerUserName'),
+    syncBtn: document.getElementById('syncBtn'),
     logoutBtn: document.getElementById('logoutBtn')
 };
 
@@ -63,6 +64,9 @@ function setupEventListeners() {
     
     // Cancel login button
     document.getElementById('cancelLoginBtn').addEventListener('click', showRoleSelection);
+
+    // Sync Data
+    DOM.syncBtn.addEventListener('click', handleSync);
 
     // Logout
     DOM.logoutBtn.addEventListener('click', handleLogout);
@@ -205,11 +209,54 @@ function setupRealtimeSync() {
         db.supabase.subscribeToReadings((payload) => {
             console.log("⚡ Auto-refreshing dashboard view on cloud change:", payload);
             if (state.currentRole === 'supervisor') {
-                loadSupervisorReadings();
+                loadSupervisorDashboardView();
             } else if (state.currentRole === 'manager' || state.currentRole === 'admin') {
                 loadManagerSubmissions();
             }
         });
+    }
+}
+
+// Sync Data click handler
+async function handleSync() {
+    const syncBtn = document.getElementById('syncBtn');
+    const syncIcon = syncBtn.querySelector('i');
+    
+    // Add spin animation
+    syncIcon.classList.add('fa-spin');
+    syncBtn.disabled = true;
+    
+    try {
+        if (state.currentRole === 'technician') {
+            await initTechnicianDashboard();
+        } else if (state.currentRole === 'supervisor') {
+            await loadSupervisorDashboardView();
+            if (supervisorActiveReportTab === 'reports' && typeof loadSupervisorReportView === 'function') {
+                const activeRepKey = window.supervisorActiveReportKey || 'today';
+                await loadSupervisorReportView(activeRepKey);
+            }
+        } else if (state.currentRole === 'manager' || state.currentRole === 'admin') {
+            if (window.managerActiveTab === 'submissions') {
+                await loadManagerSubmissions();
+            } else if (window.managerActiveTab === 'users') {
+                await loadManagerUsers();
+            } else if (window.managerActiveTab === 'meters') {
+                await loadManagerMeters();
+            } else if (window.managerActiveTab === 'reports') {
+                await loadManagerReports();
+            } else if (window.managerActiveTab === 'charts') {
+                await loadManagerCharts();
+            }
+        }
+        console.log("⚡ Supabase Data Sync Completed!");
+    } catch (err) {
+        console.error("Sync error:", err);
+    } finally {
+        // Remove spin animation after a slight delay to ensure visual feedback
+        setTimeout(() => {
+            syncIcon.classList.remove('fa-spin');
+            syncBtn.disabled = false;
+        }, 800);
     }
 }
 
@@ -532,6 +579,7 @@ async function runAiOcrSimulation() {
         
         const now = new Date();
         const newReading = {
+            technicianId: state.currentUser.id,
             technicianName: state.currentUser.name,
             locationId: state.selectedLocationId,
             meterId: state.selectedMeterId,

@@ -205,6 +205,7 @@ export const supabaseApi = {
         }
         
         const payload = {
+            technician_id: reading.technicianId,
             location_id: reading.locationId,
             meter_id: reading.meterId,
             reading_value: reading.meterReading,
