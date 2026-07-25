@@ -1478,12 +1478,17 @@ async function showUserEditorModal(techUser) {
     
     modal.querySelector('#editorSave').onclick = async () => {
         const fullName = modal.querySelector('#techFullName').value.trim();
-        const username = modal.querySelector('#techUsername').value.trim();
+        let username = modal.querySelector('#techUsername').value.trim();
         const password = modal.querySelector('#techPassword').value.trim();
         
         if(!fullName || !username || !password) {
             alert("All fields are required.");
             return;
+        }
+        
+        // Auto-convert plain username to valid email address format in Cloud Mode
+        if (db.isCloudMode() && !username.includes('@')) {
+            username = `${username}@grsenergy.com`;
         }
         
         const checkedLocs = Array.from(modal.querySelectorAll('input[name="assignedLoc"]:checked')).map(chk => chk.value);
@@ -1506,12 +1511,14 @@ async function showUserEditorModal(techUser) {
         
         try {
             await db.saveUser(payload);
+            modal.remove();
+            loadManagerUsers();
         } catch (err) {
             console.error("Error saving user:", err);
+            alert(`Error saving to Supabase Cloud: ${err.message || err}\n\nPlease check your internet connection or try another email address/password.`);
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = 'Save Changes';
         }
-        
-        modal.remove();
-        loadManagerUsers();
     };
 }
 

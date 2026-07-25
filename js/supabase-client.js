@@ -63,7 +63,17 @@ export const supabaseApi = {
 
     async signUpUser(email, password, fullName, role = 'TECHNICIAN') {
         if (!supabaseClient) throw new Error("Supabase client is not configured.");
-        const { data, error } = await supabaseClient.auth.signUp({
+        
+        // Create a temporary client that does not persist session so it doesn't alter the logged-in Admin's session
+        const tempClient = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
+            auth: {
+                persistSession: false,
+                autoRefreshToken: false,
+                detectSessionInUrl: false
+            }
+        });
+        
+        const { data, error } = await tempClient.auth.signUp({
             email,
             password,
             options: {
