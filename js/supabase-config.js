@@ -1,12 +1,19 @@
 // GRS Smart Energy Monitoring System - Supabase Configuration
 // Configured with active project credentials
 
-export const SUPABASE_CONFIG = {
-    // Supabase Project URL
-    url: "https://lvogfmwtecpknjepbrbn.supabase.co",
+// Detect if running on localhost / dev environment
+const isLocalhost = window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1' || 
+                    window.location.hostname.startsWith('192.168.');
 
-    // Supabase Anon / Publishable API Key
-    anonKey: "sb_publishable_mh1g6Sn2L5_mul3-81lz4A_eDxjj9Xi"
+export const SUPABASE_CONFIG = isLocalhost ? {
+    // Development / Local Testing Supabase Project
+    url: "https://rdgtplphyxfdetkopnho.supabase.co",
+    anonKey: "sb_publishable_Jna5576RDGbL8lJZMxi1QA_7VnCLH5l"
+} : {
+    // Production Supabase Project
+    url: "https://biffdmqmyxomosdjlguc.supabase.co",
+    anonKey: "sb_publishable_Djj_l8Js-pd5bJYXmp170Q_3SaYQZiy"
 };
 
 /**
