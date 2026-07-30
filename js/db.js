@@ -293,7 +293,10 @@ const db = {
 
         if (this.isCloudMode() && user.id) {
             try {
-                await this.supabase.updateProfile(user.id, { full_name: user.name || user.full_name });
+                await this.supabase.updateProfile(user.id, { 
+                    full_name: user.name || user.full_name,
+                    zone_area: user.zoneArea || null
+                });
                 if (user.assignedLocations) {
                     await this.supabase.saveUserAssignments(user.id, user.assignedLocations, user.assignedMeters || []);
                 }

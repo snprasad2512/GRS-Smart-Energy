@@ -1285,6 +1285,7 @@ async function loadManagerUsers() {
                 name: p.full_name || p.email,
                 password: '***',
                 role: 'technician',
+                zoneArea: p.zone_area || '',
                 assignedLocations: p.assignedLocations || [],
                 assignedMeters: p.assignedMeters || []
             }));
@@ -1322,8 +1323,9 @@ async function loadManagerUsers() {
                 <span style="font-family:monospace; font-size:0.8rem; color:var(--text-secondary);">@${u.username}</span>
             </td>
             <td><span style="font-family:monospace; font-size:0.9rem;">${u.password}</span></td>
-            <td><div style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${locNames}">${locNames || '-'}</div></td>
-            <td><div style="max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${meterNames}">${meterNames || '-'}</div></td>
+            <td><div style="max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${u.zoneArea || '-'}">${u.zoneArea || '-'}</div></td>
+            <td><div style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${locNames}">${locNames || '-'}</div></td>
+            <td><div style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${meterNames}">${meterNames || '-'}</div></td>
             <td class="text-right">
                 <button class="btn btn-secondary btn-icon action-edit-user" title="Edit Technician" style="margin-right:0.25rem;"><i class="fas fa-edit"></i></button>
                 <button class="btn btn-danger btn-icon action-delete-user" title="Delete Technician"><i class="fas fa-trash-alt"></i></button>
@@ -1432,17 +1434,22 @@ async function showUserEditorModal(techUser) {
                         <input type="text" id="techPassword" class="form-control" value="${isEdit ? techUser.password : '123'}" required />
                     </div>
                 </div>
+
+                <div class="form-group" style="margin-top:1rem;">
+                    <label>Assigned Zone/Area</label>
+                    <input type="text" id="techZoneArea" class="form-control" value="${isEdit ? techUser.zoneArea || '' : ''}" placeholder="e.g. North Zone, Phase 1 Area" />
+                </div>
                 
                 <div style="display:flex; gap:1.5rem; margin-top:1rem;">
                     <div style="flex:1;">
-                        <label style="font-size:0.85rem; color:var(--text-secondary); font-weight:500; display:block; margin-bottom:0.5rem;">Assign Locations</label>
+                        <label style="font-size:0.85rem; color:var(--text-secondary); font-weight:500; display:block; margin-bottom:0.5rem;">Assigned Location</label>
                         <div style="max-height:180px; overflow-y:auto; border:1px solid var(--border-color); padding:0.75rem; border-radius:10px; background:rgba(0,0,0,0.15);" id="locChecksArea">
                             ${locCheckboxes}
                         </div>
                     </div>
                     
                     <div style="flex:1.2;">
-                        <label style="font-size:0.85rem; color:var(--text-secondary); font-weight:500; display:block; margin-bottom:0.5rem;">Assign Energy Meters</label>
+                        <label style="font-size:0.85rem; color:var(--text-secondary); font-weight:500; display:block; margin-bottom:0.5rem;">Assigned Energy Meter(s)</label>
                         <div style="max-height:180px; overflow-y:auto; border:1px solid var(--border-color); padding:0.75rem; border-radius:10px; background:rgba(0,0,0,0.15);" id="meterChecksArea">
                             ${meterCheckboxes}
                         </div>
@@ -1510,6 +1517,7 @@ async function showUserEditorModal(techUser) {
             name: fullName,
             full_name: fullName,
             role: 'technician',
+            zoneArea: modal.querySelector('#techZoneArea').value.trim(),
             assignedLocations: checkedLocs,
             assignedMeters: checkedMtrs
         };

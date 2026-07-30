@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     email TEXT UNIQUE NOT NULL,
     role TEXT NOT NULL CHECK (role IN ('ADMIN', 'MANAGER', 'SUPERVISOR', 'TECHNICIAN')) DEFAULT 'TECHNICIAN',
     active BOOLEAN NOT NULL DEFAULT TRUE,
+    zone_area TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
