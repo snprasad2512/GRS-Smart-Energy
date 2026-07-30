@@ -146,7 +146,9 @@ async function handleLogin(e) {
                     username: profile.email,
                     name: profile.full_name || profile.email,
                     role: userRole,
-                    email: profile.email
+                    email: profile.email,
+                    assignedLocations: profile.assignedLocations || [],
+                    assignedMeters: profile.assignedMeters || []
                 };
                 loginSuccess();
             } else {
@@ -344,7 +346,13 @@ async function loadTechnicianMeters(locationId) {
     
     const locationMeters = allMeters.filter(m => {
         const mLocId = m.locationId || m.location_id;
-        return mLocId === locationId;
+        if (mLocId !== locationId) return false;
+        
+        // If technician has assigned meters, restrict options to assigned ones
+        if (state.currentUser && state.currentUser.assignedMeters && state.currentUser.assignedMeters.length > 0) {
+            return state.currentUser.assignedMeters.includes(m.id);
+        }
+        return true;
     });
     
     locationMeters.forEach(m => {
@@ -1277,7 +1285,8 @@ async function loadManagerUsers() {
                 name: p.full_name || p.email,
                 password: '***',
                 role: 'technician',
-                assignedLocations: p.assignedLocations || []
+                assignedLocations: p.assignedLocations || [],
+                assignedMeters: p.assignedMeters || []
             }));
             locations = await db.supabase.getLocations();
             meters = await db.supabase.getEnergyMeters();

@@ -295,7 +295,7 @@ const db = {
             try {
                 await this.supabase.updateProfile(user.id, { full_name: user.name || user.full_name });
                 if (user.assignedLocations) {
-                    await this.supabase.saveUserAssignments(user.id, user.assignedLocations);
+                    await this.supabase.saveUserAssignments(user.id, user.assignedLocations, user.assignedMeters || []);
                 }
             } catch (err) {
                 console.error("Cloud profile & assignments update note:", err);

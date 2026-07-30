@@ -24,7 +24,7 @@ export const supabaseApi = {
         // Fetch matching profile
         let { data: profile, error: profileErr } = await supabaseClient
             .from('profiles')
-            .select('*, user_location_assignments(location_id)')
+            .select('*, user_location_assignments(location_id), user_meter_assignments(meter_id)')
             .eq('id', data.user.id)
             .maybeSingle();
             
@@ -53,10 +53,12 @@ export const supabaseApi = {
             if (insertErr) throw insertErr;
             profile = inserted;
             profile.user_location_assignments = [];
+            profile.user_meter_assignments = [];
         }
         
         // Map assignments to flat array
         profile.assignedLocations = (profile.user_location_assignments || []).map(a => a.location_id);
+        profile.assignedMeters = (profile.user_meter_assignments || []).map(a => a.meter_id);
         
         return { user: data.user, profile };
     },
@@ -93,7 +95,7 @@ export const supabaseApi = {
         if (!supabaseClient) return [];
         const { data, error } = await supabaseClient
             .from('profiles')
-            .select('*, user_location_assignments(location_id)')
+            .select('*, user_location_assignments(location_id), user_meter_assignments(meter_id)')
             .eq('active', true)
             .order('created_at', { ascending: false });
         if (error) throw error;
@@ -101,7 +103,8 @@ export const supabaseApi = {
         // Map assignments flat array
         return (data || []).map(p => ({
             ...p,
-            assignedLocations: (p.user_location_assignments || []).map(a => a.location_id)
+            assignedLocations: (p.user_location_assignments || []).map(a => a.location_id),
+            assignedMeters: (p.user_meter_assignments || []).map(a => a.meter_id)
         }));
     },
 
@@ -184,15 +187,26 @@ export const supabaseApi = {
         return data[0];
     },
 
-    async saveUserAssignments(userId, locationIds) {
+    async saveUserAssignments(userId, locationIds, meterIds) {
         if (!supabaseClient) return false;
-        const { error: deleteErr } = await supabaseClient
+        
+        // Delete location assignments
+        const { error: deleteLocErr } = await supabaseClient
             .from('user_location_assignments')
             .delete()
             .eq('user_id', userId);
             
-        if (deleteErr) throw deleteErr;
+        if (deleteLocErr) throw deleteLocErr;
         
+        // Delete meter assignments
+        const { error: deleteMtrErr } = await supabaseClient
+            .from('user_meter_assignments')
+            .delete()
+            .eq('user_id', userId);
+            
+        if (deleteMtrErr) throw deleteMtrErr;
+        
+        // Insert new location assignments
         if (locationIds && locationIds.length > 0) {
             const inserts = locationIds.map(locId => ({
                 user_id: userId,
@@ -200,6 +214,19 @@ export const supabaseApi = {
             }));
             const { error: insertErr } = await supabaseClient
                 .from('user_location_assignments')
+                .insert(inserts);
+                
+            if (insertErr) throw insertErr;
+        }
+        
+        // Insert new meter assignments
+        if (meterIds && meterIds.length > 0) {
+            const inserts = meterIds.map(mtrId => ({
+                user_id: userId,
+                meter_id: mtrId
+            }));
+            const { error: insertErr } = await supabaseClient
+                .from('user_meter_assignments')
                 .insert(inserts);
                 
             if (insertErr) throw insertErr;

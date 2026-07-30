@@ -67,6 +67,16 @@ CREATE TABLE IF NOT EXISTS public.user_location_assignments (
 );
 
 -- ----------------------------------------------------------------------------
+-- 5B. USER METER ASSIGNMENTS TABLE
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.user_meter_assignments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    meter_id UUID NOT NULL REFERENCES public.energy_meters(id) ON DELETE CASCADE,
+    CONSTRAINT unique_user_meter UNIQUE (user_id, meter_id)
+);
+
+-- ----------------------------------------------------------------------------
 -- AUTOMATIC PROFILE CREATION TRIGGER ON USER SIGNUP
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -98,6 +108,7 @@ ALTER TABLE public.locations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.energy_meters ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.meter_readings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_location_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_meter_assignments ENABLE ROW LEVEL SECURITY;
 
 -- Helper to fetch logged-in user role
 CREATE OR REPLACE FUNCTION public.get_my_role()
@@ -145,6 +156,17 @@ CREATE POLICY "Allow read user location assignments"
 
 CREATE POLICY "Allow admin/manager manage user location assignments"
     ON public.user_location_assignments FOR ALL
+    TO authenticated
+    USING (public.get_my_role() IN ('ADMIN', 'MANAGER'));
+
+-- User Meter Assignments Policies
+CREATE POLICY "Allow read user meter assignments"
+    ON public.user_meter_assignments FOR SELECT
+    TO authenticated
+    USING (TRUE);
+
+CREATE POLICY "Allow admin/manager manage user meter assignments"
+    ON public.user_meter_assignments FOR ALL
     TO authenticated
     USING (public.get_my_role() IN ('ADMIN', 'MANAGER'));
 
