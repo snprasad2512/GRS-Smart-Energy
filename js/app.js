@@ -687,9 +687,6 @@ async function loadSupervisorDashboardView() {
     
     renderFilteredSupervisorReadings();
 }
-    
-    renderFilteredSupervisorReadings();
-}
 
 function renderFilteredSupervisorReadings() {
     const listBody = document.getElementById('superReadingsList');
@@ -857,6 +854,9 @@ function showReviewModal(reading) {
         });
         modal.remove();
         loadSupervisorDashboardView();
+    };
+}
+
 // Supervisor Dashboard Reports Controller
 async function loadSupervisorReportView(reportKey) {
     const reportTitle = document.getElementById('superReportTitle');
