@@ -65,6 +65,20 @@ function setupEventListeners() {
     // Cancel login button
     document.getElementById('cancelLoginBtn').addEventListener('click', showRoleSelection);
 
+    // Toggle Password Visibility
+    const togglePasswordBtn = document.querySelector('.toggle-password-btn');
+    if (togglePasswordBtn) {
+        togglePasswordBtn.addEventListener('click', () => {
+            if (DOM.passwordInput.type === 'password') {
+                DOM.passwordInput.type = 'text';
+                togglePasswordBtn.classList.replace('fa-eye-slash', 'fa-eye');
+            } else {
+                DOM.passwordInput.type = 'password';
+                togglePasswordBtn.classList.replace('fa-eye', 'fa-eye-slash');
+            }
+        });
+    }
+
     // Sync Data
     DOM.syncBtn.addEventListener('click', handleSync);
 
@@ -78,21 +92,43 @@ function showRoleSelection() {
     state.currentUser = null;
     
     DOM.roleSelectionScreen.classList.remove('d-none');
-    DOM.loginPanel.style.display = 'none';
+    DOM.loginPanel.style.display = 'block';
     DOM.appHeader.classList.add('d-none');
     DOM.mainAppArea.classList.add('d-none');
     
     DOM.usernameInput.value = '';
     DOM.passwordInput.value = '';
     DOM.loginError.classList.add('d-none');
+
+    // Default to admin role on load
+    showLoginForm('admin');
 }
 
 // Show login form for a specific role
 function showLoginForm(role) {
     state.currentRole = role;
     DOM.loginPanel.style.display = 'block';
-    DOM.loginTitle.textContent = `${role.charAt(0).toUpperCase() + role.slice(1)} Login`;
     DOM.loginError.classList.add('d-none');
+
+    // Toggle active class on tabs
+    document.querySelectorAll('.role-btn').forEach(btn => {
+        if (btn.dataset.role === role) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    // Set input placeholder dynamically
+    if (role === 'admin') {
+        DOM.usernameInput.placeholder = 'e.g. ADM-01';
+    } else if (role === 'supervisor') {
+        DOM.usernameInput.placeholder = 'e.g. SUP-01';
+    } else if (role === 'manager') {
+        DOM.usernameInput.placeholder = 'e.g. MGR-01';
+    } else if (role === 'technician') {
+        DOM.usernameInput.placeholder = 'e.g. TECH-01';
+    }
     
     // Autofill credentials for easy testing
     if (db.isCloudMode()) {
